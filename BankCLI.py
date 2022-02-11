@@ -4,9 +4,11 @@ import pickle
 
 class Bank:
     def __init__(self):
+        """Initalize the Bank with no accounts"""
         self.accounts = None
 
     def createAccount(self, accountID, accountType, deposit):
+        """Initialize a CheckingAccount or SavingsAccount, depending on query accountType string"""
         newAccount = CheckingAccount(accountID, accountType, deposit) if accountType == "checking" else SavingsAccount(accountID, accountType, deposit)
         if not self.accounts:
             self.accounts = [newAccount]
@@ -15,21 +17,29 @@ class Bank:
 
 class Account:
     def __init__(self, accountID, accountType, deposit):
+        """Initialize attributes of the parent class, with the first deposit as the first transaction"""
         self.accountID = accountID
         self.accountType = accountType.capitalize()
-        self.deposit = 0
+        self.balance = 0
         self.transactions = None
-        self.trueTransactionCounter = 0
         self.addTransaction(Decimal(deposit), datetime.now(), True)
 
+    def __str__(self):
+        """String method for printing Account information"""
+        zeroPad = 9 - len(str(self.accountID))
+        balanceStr = "{:,.2f}".format(self.balance)
+        return self.accountType + "#" + "0" * zeroPad + str(self.accountID) + ",\tbalance: $" + balanceStr
+
     def printTransactions(self):
+        """Print Transactions using object's string method"""
         sortedTransactions = sorted(self.transactions, key= lambda x: x.date)
         for t in sortedTransactions:
-            print(t.date + ", $" + "{:,.2f}".format(t.amount))
+            print(t)
 
     def addTransaction(self, amount, date, trueTransaction):
+        """Initialize and add a transaction to the transactions list"""
         newTransaction = Transaction(amount, date, trueTransaction)
-        self.deposit += amount
+        self.balance += amount
 
         if not self.transactions:
             self.transactions = [newTransaction]
@@ -38,37 +48,53 @@ class Account:
 
 class Transaction:
     def __init__(self, amount, date, trueTransaction):
+        """Initialize attributes of the transaction object"""
         self.amount = amount
         self.date = date if type(date) == str else date.strftime("%Y") + "-" +  date.strftime("%m") + "-" +  date.strftime("%d")
         self.trueTransaction = trueTransaction
 
+    def __str__(self):
+        """String method for printing Transaction information"""
+        return self.date + ", $" + "{:,.2f}".format(self.amount)
+
+
 class CheckingAccount(Account):
+    """Child class of derived Account class"""
     def calculateInterest(self):
-        pass
+        """Calculate interest on CheckingAccount object"""
+        self.addTransaction(self.balance*Decimal(0.0015), datetime.now(), False)
+        if self.balance < 100:
+            self.addTransaction(Decimal(-10), datetime.now(), False)
 
 
 class SavingsAccount(Account):
-    def checkTransactionCountLimit(self):
-        pass
+    """Child class of derived Account class"""
+    def isAccountAtTransactionLimit(self, date):
+        """Check if we have hit the number of allowed transactions for the SavingsAccount object"""
+        year, month, day = date.split("-")
+        recentTransactionDates = 0
+        recentTransactionMonths = 0
+        for t in self.transactions:
+            if t.trueTransaction:
+                y,m,d = t.date.split("-")
+                if d == day:
+                    recentTransactionDates += 1
+                if m == month:
+                    recentTransactionMonths += 1
+
+        return recentTransactionDates >= 2 or recentTransactionMonths >= 5
 
     def calculateInterest(self):
-        pass
-
-def parseInfo(acc):
-    zeroPad = 9 - len(str(acc.accountID))
-    #depositStr = "%.2f" % acc.deposit
-    depositStr = "{:,.2f}".format(acc.deposit)
-    return acc.accountType + "#" + "0" * zeroPad + str(acc.accountID) + ",\tbalance: $" + depositStr
+        """Calculate interest on SavingsAccount object"""
+        self.addTransaction(self.balance*Decimal(0.025), datetime.now(), False)
 
 def main():
     accountID = 1
     bank = Bank()
     currAccount = "None"
     while True:
-        # doublecheck on what exactly needs to be printed below
-        accountPrint = currAccount if currAccount == "None" else parseInfo(currAccount)
         print("--------------------------------")
-        print("Currently selected account: " + accountPrint)
+        print("Currently selected account: " + str(currAccount))
         print("Enter command")
         print("1: open account")
         print("2: summary")
@@ -93,9 +119,7 @@ def main():
         elif task == "2":
             # 2: summary
             for acc in bank.accounts:
-                # clean this up and test for the deposit value
-                accInfo = parseInfo(acc)
-                print(accInfo)
+                print(acc)
         
         elif task == "3":
             # 3: select account
@@ -113,40 +137,21 @@ def main():
             amount = input(">")
             print("Date? (YYYY-MM-DD)")
             date = input(">")
-            year, month, day = date.split("-")
 
             # check if we're exceeding the trans limit
-            if currAccount.deposit + Decimal(amount) < 0:
+            if currAccount.balance + Decimal(amount) < 0:
                 continue
-            if type(currAccount) is SavingsAccount:
-                recentTransactionDates = []
-                for i in range(len(currAccount.transactions)-1,-1,-1):
-                    if currAccount.transactions[i].trueTransaction:
-                        recentTransactionDates.append(currAccount.transactions[i].date.split("-"))
-                    if len(recentTransactionDates) == 2:
-                        break
-
-                recentTransactionMonths = []
-                for i in range(len(currAccount.transactions)-1,-1,-1):
-                    if currAccount.transactions[i].trueTransaction:
-                        recentTransactionMonths.append(currAccount.transactions[i].date.split("-"))
-                    if len(recentTransactionMonths) == 5:
-                        break
-
-                if (len(recentTransactionDates) == 2 and all(d == day for _,_,d in recentTransactionDates)) or (len(recentTransactionMonths) == 5 and all(m == month for _,m,_ in recentTransactionMonths)):
-                    continue
-            
+            if type(currAccount) is SavingsAccount and currAccount.isAccountAtTransactionLimit(date):
+                continue
                 
             currAccount.addTransaction(Decimal(amount), date, True)
 
         elif task == "6":
             # 6: interest and fees
             if type(currAccount) is SavingsAccount:
-                currAccount.addTransaction(currAccount.deposit*Decimal(0.025), datetime.now(), False)
+                currAccount.calculateInterest()
             elif type(currAccount) is CheckingAccount:
-                currAccount.addTransaction(currAccount.deposit*Decimal(0.0015), datetime.now(), False)
-                if currAccount.deposit < 100:
-                    currAccount.addTransaction(Decimal(-10), datetime.now(), False)
+                currAccount.calculateInterest()
 
         elif task == "7":
             # 7: save
@@ -154,7 +159,7 @@ def main():
 
         elif task == "8":
             # 8: load
-            pickle.load(open("save.p", "rb"))
+            bank = pickle.load(open("save.p", "rb"))
 
         elif task == "9":
             # 9: quit
